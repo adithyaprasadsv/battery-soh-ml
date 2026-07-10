@@ -1,0 +1,7 @@
+Model,Early (1-44),Mid  (45-88),Late (89-132),Overall
+Ridge (discharge),14.01 (n=29),6.54 (n=44),0.72 (n=44),8.06
+XGBoost (discharge),13.68 (n=29),6.27 (n=44),1.00 (n=44),7.84
+XGBoost-HF raw,20.89 (n=19),9.95 (n=44),2.15 (n=44),10.96
+XGBoost-HF true HF,17.80 (n=19),59.09 (n=44),21.68 (n=44),41.06
+XGBoost-HF Q75,12.62 (n=19),2.33 (n=44),2.54 (n=44),5.76
+XGBoost-HF Q90,9.47 (n=19),9.18 (n=44),7.41 (n=44),8.55
