@@ -31,6 +31,7 @@ impedance spectroscopy.
 
 ## Project Structure
 
+```
 battery-soh-rul/
 │
 ├── data/                          # NASA PCOE .mat files (not tracked)
@@ -55,6 +56,7 @@ battery-soh-rul/
 │
 ├── requirements.txt
 └── README.md
+```
 
 ---
 
@@ -222,6 +224,7 @@ making EOL projections too optimistic.
 
 ## Causal Roadmap
 
+```
 This project establishes the correlation structure that motivates a causal model:
 Aging (cycle count)
      │
@@ -240,7 +243,7 @@ energy_Wh ↓    HF6 ↑, HF1 ↑
 └───────┬───────────┘
         ▼
 SoH (capacity) ↓
-
+```
 
 **Example:** DoWhy DAG-based causal model to answer:
 *"If R_int is held constant (via temperature control or formation cycling),
@@ -256,7 +259,7 @@ what is the counterfactual effect on capacity fade rate?"*
    Based on the Combination of LSTM and GPR," *Sustainability*, 2022.
 3. B. Saha and K. Goebel, "Battery Data Set," NASA PCoE, 2007.
 4. Zhang, Y., Tang, Q., Zhang, Y. et al., "Identifying degradation patterns of lithium ion batteries from impedance spectroscopy using machine learning." Nat Commun 11, 1706 (2020). 
-    Available: [EIS] (https://doi.org/10.1038/s41467-020-15235-7)
+    Available: [EIS](https://doi.org/10.1038/s41467-020-15235-7)
 
 ---
 
