@@ -130,6 +130,52 @@ available in a BMS. Explainability is a primary deliverable alongside accuracy.
 | HF5 | Exponential fit amplitude | 0.030 | ✗ |
 | HF6 | RC time constant | −0.871 | ✓ |
 
+## Feature Glossary
+
+### Discharge-Domain Features
+
+| Feature | Description |
+|---|---|
+| `discharge_dur_s` | Total discharge duration (seconds) from cycle start to 2.7V cutoff. Strongest SoH predictor (r=0.95), at constant 2A, duration directly encodes charge delivered. |
+| `voltage_mean` | Mean terminal voltage over the full discharge. Declines with age as internal resistance reduces the usable voltage window. |
+| `voltage_std` | Standard deviation of terminal voltage during discharge. Increases with age as the voltage curve shape changes. |
+| `voltage_slope` | Linear regression slope of voltage over time (V/s). Becomes more negative with aging as resistance accelerates voltage decay. |
+| `voltage_at_80pct` | Terminal voltage at 80% of discharge duration. Position-specific snapshot capturing mid-discharge behaviour independent of total duration. |
+| `temp_rise` | Peak minus start temperature within a cycle (°C). Used instead of `temp_max` to cancel inter-battery ambient offsets, rises with internal resistance as resistive heating increases. |
+| `R_int_proxy` | Internal resistance proxy: ΔV/ΔI averaged over first 10 timesteps. Approximates R_int from the transient voltage drop under applied load. Rises monotonically with aging. |
+| `energy_Wh` | Energy delivered per cycle: ∫\|V·I\|dt / 3600 (Wh). Captures both voltage and current contributions. Top SHAP feature in discharge domain. |
+| `Q_cum_Ah` | Cumulative charge delivered per cycle: ∫\|I\|dt / 3600 (Ah). At constant 2A discharge, near-perfectly correlated with `discharge_dur_s`. |
+| `Q_temp_compensated` | Temperature-compensated capacity: Q / (1 + α(T_amb − T_ref)) where α = 0.005 °C⁻¹. Removes thermal drift from the capacity signal. |
+| `dQdV_peak_height` | Incremental capacity (dQ/dV) peak height extracted over the 2.7–3.7V voltage window. Peaks correspond to electrode phase transitions; amplitude decreases with aging. Normalised by discharge duration to remove early-cycle artifact. |
+| `dQdV_peak_voltage` | Voltage position of the dQ/dV peak. Shifts toward lower voltages with aging as phase transition dynamics change. |
+| `rolling_mean_5` | Rolling mean of capacity_Ah over the preceding 5 cycles, computed with shift(1) to prevent target leakage. Captures local degradation trend through non-monotonic recovery regions. |
+| `rolling_std_5` | Rolling standard deviation of capacity_Ah over the preceding 5 cycles with shift(1). High values indicate proximity to a recovery bump or anomalous cycle. |
+
+---
+
+### Charge-Domain Health Factors
+
+| Feature | Description |
+|---|---|
+| `HF1` | Time for terminal voltage to rise from 3.9V to 4.2V during CC charging (seconds). Increases with R_int as higher resistance slows the voltage rise rate. Spearman r = 0.935 with capacity. Degradation rate correlation r = 0.997 across batteries. |
+| `HF2` | Voltage increase within 600s after reaching 3.9V during CC charging (V). Decreases with aging as the cell charges more slowly per unit time. Spearman r = −0.919. |
+| `HF3` | Current reduction within 900s after entering the CV phase (A). Reflects how quickly the cell accepts charge at fixed voltage. Spearman r = 0.598. |
+| `HF4` | Asymptotic current floor of exponential CV decay fit: I(t) = HF4 + HF5·exp(−t/HF6). Near-zero correlation with capacity (Spearman r = −0.172). Excluded from model. |
+| `HF5` | Initial amplitude of exponential CV decay fit. Near-zero correlation with capacity (Spearman r = 0.030). Excluded from model. |
+| `HF6` | RC time constant of exponential CV current decay (seconds). Directly measures the equivalent circuit time constant; increases with R_int as aging raises internal resistance. Top SHAP feature in charge domain. Spearman r = −0.871. |
+| `HF6_rolling_mean5` | Rolling mean of HF6 over the preceding 5 cycles with shift(1). Highest SHAP rank in charge-domain XGBoost, local trend of RC time constant is more predictive than its instantaneous value. |
+| `HF1_rolling_mean5` | Rolling mean of HF1 over the preceding 5 cycles with shift(1). Captures the rate of CC charge time increase rather than its absolute level. |
+
+---
+
+### EIS-Derived Features (Omitted due to missing cycles)
+
+| Feature | Description |
+|---|---|
+| `Re` | Electrolyte resistance (Ω) from EIS. High-frequency intercept on the Nyquist plot. Increases with electrolyte decomposition and lithium salt depletion. Spearman r = −0.64 with capacity (n ≈ 170 cycles). |
+| `Rct` | Charge transfer resistance (Ω) from EIS. Nyquist semicircle diameter. Increases with SEI layer growth and active material loss. Spearman r = −0.70 with capacity. Stronger predictor than Re, consistent with SEI growth being the dominant aging mechanism in LiCoO₂ at room temperature. |
+
+
 ### Modeling
 
 **Part 1:** Ridge (baseline) → Random Forest → XGBoost (tuned via
