@@ -19,7 +19,7 @@ The methodology follows the **CRISP-DM** framework across two complementary doma
 
 | Part | Domain | Input | Method | Best RMSE |
 |------|---------|-------|--------|-----------|
-| 1 | Discharge curves | 14 physics-informed features | Ridge / RF / XGBoost + SHAP | **0.0041 Ah** |
+| 1 | Discharge curves | 17 physics-informed features | Ridge / RF / XGBoost + SHAP | **0.0041 Ah** |
 | 2 | Charging curves | HF1, HF2, HF3, HF6 | Multi-output LSTM → XGBoost + SHAP | **0.0434 Ah** (Q75 calibrated) |
 
 **Key finding:** SHAP analysis across both domains independently identifies
@@ -116,8 +116,8 @@ available in a BMS. Explainability is a primary deliverable alongside accuracy.
 | Category | Features |
 |----------|----------|
 | Statistical | `discharge_dur_s`, `voltage_mean`, `voltage_std`, `voltage_slope`, `voltage_at_80pct`, `temp_rise` |
-| Physics-informed | `R_int_proxy` (ΔV/ΔI), `energy_Wh`, `Q_cum_Ah`, `Q_temp_compensated`, `dQdV_peak_height`, `dQdV_peak_voltage` |
-| Trend | `rolling_mean_5`, `rolling_std_5` (shift(1) to prevent leakage) |
+| Physics-informed | `R_int_proxy` (ΔV/ΔI), `energy_Wh`, `Q_cum_Ah`, `Q_temp_compensated`, `dQdV_peak_height`, `dQdV_peak_voltage`, `in_formation_phase` |
+| Trend | `rolling_mean_5`, `rolling_std_5` (shift(1) to prevent leakage),  `R_int_proxy_since_trough` |
 
 **Part 2: Charge health factors (4 selected from 6):**
 
@@ -150,6 +150,7 @@ available in a BMS. Explainability is a primary deliverable alongside accuracy.
 | `dQdV_peak_voltage` | Voltage position of the dQ/dV peak. Shifts toward lower voltages with aging as phase transition dynamics change. |
 | `rolling_mean_5` | Rolling mean of capacity_Ah over the preceding 5 cycles, computed with shift(1) to prevent target leakage. Captures local degradation trend through non-monotonic recovery regions. |
 | `rolling_std_5` | Rolling standard deviation of capacity_Ah over the preceding 5 cycles with shift(1). High values indicate proximity to a recovery bump or anomalous cycle. |
+| `R_int_proxy_since_trough` & `in_formation_phase`  | Accounts for initial trough in initial resistance due to SEI layer stabilization. $\delta R\_int$  with cumulative minimum and flag initial trough. |
 
 ---
 
@@ -179,7 +180,7 @@ available in a BMS. Explainability is a primary deliverable alongside accuracy.
 ### Modeling
 
 **Part 1:** Ridge (baseline) → Random Forest → XGBoost (tuned via
-`GridSearchCV` with `GroupKFold`, 50 iterations). All models in
+`GridSearchCV` with `GroupKFold`). All models in
 `sklearn` Pipelines with `StandardScaler`.
 
 **Part 2:** Multi-output LSTM (2 layers, hidden=32, dropout=0.3, Adam)
@@ -211,30 +212,21 @@ systematic under-prediction from inter-battery capacity offset.
 
 ### RUL Prediction: B0018 Holdout (Linear Extrapolation)
 
-| Model | RMSE (cycles) | MAE (cycles) |
-|-------|--------------|--------------|
-| **XGBoost (discharge)** | **7.56** | 5.03 |
-| Ridge (discharge) | 7.64 | **4.94** |
-| XGBoost-HF Q75 calibrated | **5.44** | 3.32 |
-| XGBoost-HF Q90 calibrated | 7.45  | 6.38 |
-| XGBoost-HF raw | 12.47 | 9.47 |
-| Paper GPR+LSTM *(within-battery)* | 5.54 | **0.58** |
+| Model                 | Early (1–44)     | Mid (45–88)     | Late (89–132)     | Overall |
+|-----------------------|------------------|------------------|--------------------|---------|
+| Ridge (discharge)     | 14.18 (n=34)     | 6.47 (n=44)      | **0.94** (n=44)        | 8.45    |
+| XGBoost (discharge)   | 13.59 (n=34)     | 6.44 (n=44)      | 1.29 (n=44)        | **8.19**    |
+| XGBoost-HF raw        | 23.48 (n=24)     | 13.59 (n=44)     | 2.15 (n=44)        | 13.88   |
+| XGBoost-HF true HF    | 71.46 (n=24)     | 59.09 (n=44)     | 21.68 (n=44)       | 51.49   |
+| XGBoost-HF Q75        | 14.72 (n=24)     | 2.59 (n=44)      | **2.53** (n=44)        | **7.18**    |
+| XGBoost-HF Q90        | 10.77 (n=24)     | 5.69 (n=44)      | 8.70 (n=44)        | 8.20    |
+
 
 > **Note on paper comparison:** Zhao et al. (2022) uses a within-battery
 > split (train on first 50% of each battery, test on last 50%).
 > Our cross-battery holdout is a stricter evaluation as the model
 > never sees B0018 during training. The 2.2× RUL gap is explained
 > by evaluation protocol differences.
-
-### Phase-wise RMSE Summary
-
-| Model | Early SoH | Mid SoH | Late SoH | Early RUL | Mid RUL | Late RUL |
-|-------|-----------|---------|----------|-----------|---------|----------|
-| Ridge | 0.0040 | 0.0045 | **0.0039** | 13.05 | 6.47 | **0.94** |
-| XGBoost (dis) | 0.0071 | 0.0067 | 0.0069 | 12.85 | 6.44 | 1.29 |
-| HF Q75 | **0.0234** | 0.0464 | 0.0515 | 11.66 | 2.59 | **2.53** |
-| HF Q90 | 0.0337 | 0.0489 | 0.0782 | 7.88 | 5.69 | 7.45 |
-| HF raw | 0.0611 | 0.0770 | 0.0311 | 20.93 | 13.59 | 2.15 |
 
 ---
 
@@ -247,8 +239,8 @@ a `[1.1]×` apparent improvement from sequential cycle ordering.
 ### 2. Cross-domain SHAP convergence
 Both measurement domains independently identify internal resistance as
 the dominant SoH driver:
-Discharge domain →  energy_Wh, Q_cum_Ah     (capacity throughput ↓ with age)
-Charge domain →  HF6_rolling_mean5, HF1  (resistance ↑ slows charging)
+Discharge domain →  energy_Wh, Q_cum_Ah (capacity throughput ↓ with age)
+Charge domain →  HF6_rolling_mean5, HF1 (resistance ↑ slows charging)
 EIS →  Rct (r=−0.70), Re (r=−0.64)
 
 Degradation rate correlation confirms this: HF1 evolution rate vs
@@ -265,6 +257,16 @@ trajectory stability.
 Q75 achieves lower overall RUL RMSE (5.76 vs 8.55 cycles) 
 because Q90 over-corrects in late life,
 making EOL projections too optimistic.
+
+---
+
+## Limitations:
+
+Results are evaluated on a single test battery (B0018). The cross-battery generalization gap is partially explained by B0018's lower starting capacity relative to training batteries. A larger battery cohort is necessary to improve evaluation robustness.
+
+The health-factor forecast is seeded from only the first 10 true cycles and then self-feeds for the remaining ~120+ cycles. For longer cycles, LSTM prediction errors are cumulative. The low rmse of Q75 calibration is only retrospective, hence quantile regression offers an intermediate solution for deployment scenario. 
+
+Linear extrapolation for RUL is a simplified baseline assumption, and actual deployment requires non-linear modeling. The cross-protocol results are not directly comparable and address different prediction problems. The comparison is conceptual and limited to underlying mechanisms. Charging protocols are standardized and stable across operating conditions, part II pipeline mainly serves as a BMS deployment sample.
 
 ---
 
